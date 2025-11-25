@@ -1,45 +1,80 @@
 // Arquivo: App.jsx
-
-import React, { useState, useRef } from 'react'; // Import useRef
-import { Routes, Route } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react'; 
+import { Routes, Route, Outlet } from 'react-router-dom';
 import MapPage from './pages/MapPage';
-import DataPage from './pages/DataPage';
+// REMOVIDO: import DataPage from './pages/DataPage'; 
 import DashboardPage from './pages/DashboardPage';
 import Header from './components/Header';
-import TimeseriesChart from './components/TimeseriesChart';
-import './components/Modal.css'; // Estilo para o modal
-import Draggable from 'react-draggable'; // Importa Draggable
-import 'react-resizable/css/styles.css';
+import WelcomeModal from './components/WelcomeModal'; 
+
+import 'react-resizable/css/styles.css'; 
+
+// Chave para o localStorage
+const LOCAL_STORAGE_KEY = 'hasVisitedOdinTutorial';
 
 function App() {
+  // --- Seus Estados Atuais ---
   const [searchResults, setSearchResults] = useState([]);
   const [selectedItemDetails, setSelectedItemDetails] = useState(null);
-  const [selectedCoords, setSelectedCoords] = useState(null);
-  const [timeseriesData, setTimeseriesData] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedCoords, setSelectedCoords] = useState(() => {
+    const savedCoords = sessionStorage.getItem('odin_map_selectedCoords');
+    try { return savedCoords ? JSON.parse(savedCoords) : null; }
+    catch { sessionStorage.removeItem('odin_map_selectedCoords'); return null; }
+  });
+  const [timeseriesData, setTimeseriesData] = useState([]); 
   const [imageOverlay, setImageOverlay] = useState(null);
+  const [interfaceMode, setInterfaceMode] = useState('sidebar');
 
-  // Cria uma referência para o nó do modal (necessário para Draggable)
-  const nodeRef = useRef(null);
+  // --- Nova Lógica para Controlar o Modal de Ajuda ---
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
 
+  // 1. Verifica na montagem (apenas uma vez) se o usuário já visitou
+  useEffect(() => {
+    const hasVisited = localStorage.getItem(LOCAL_STORAGE_KEY);
+    
+    // Se a chave não existir, abre o modal
+    if (!hasVisited) {
+      setIsHelpModalOpen(true);
+    }
+  }, []); 
+
+  // 2. Função para o botão de "Ajuda" (no Header)
+  const handleHelpClick = () => {
+    setIsHelpModalOpen(true);
+  };
+
+  // 3. Função para fechar o modal (passada para o WelcomeModal)
+  const handleModalClose = () => {
+    // Salva no localStorage para não mostrar automaticamente de novo
+    localStorage.setItem(LOCAL_STORAGE_KEY, 'true');
+    // Fecha o modal
+    setIsHelpModalOpen(false);
+  };
+  // --- Fim da Lógica do Modal ---
+
+
+  // --- Seus Handlers Atuais ---
   const handleCoordinateChange = (e) => {
     const { name, value } = e.target;
     const numericValue = value ? parseFloat(value) : null;
-    setSelectedCoords(prev => ({ ...prev, [name === 'latitude' ? 'lat' : 'lng']: numericValue }));
+    setSelectedCoords(prev => ({ lat: name === 'latitude' ? numericValue : (prev?.lat ?? null), lng: name === 'longitude' ? numericValue : (prev?.lng ?? null) }));
   };
 
-  const closeInfoBox = () => {
+  const toggleInterfaceMode = () => {
+    setInterfaceMode(prevMode => prevMode === 'sidebar' ? 'fullscreen' : 'sidebar');
     setSelectedItemDetails(null);
     setImageOverlay(null);
   };
 
   return (
-    <div className="app-container">
+    <div className={`app-container app-mode-${interfaceMode}`}>
       <Header
         selectedCoords={selectedCoords}
         handleCoordinateChange={handleCoordinateChange}
+        interfaceMode={interfaceMode}
+        toggleInterfaceMode={toggleInterfaceMode}
+        onHelpClick={handleHelpClick} 
       />
-      <main className="page-content">
         <Routes>
           <Route
             path="/"
@@ -50,46 +85,40 @@ function App() {
               setSelectedItemDetails={setSelectedItemDetails}
               selectedCoords={selectedCoords}
               setSelectedCoords={setSelectedCoords}
-              setTimeseriesData={setTimeseriesData}
-              setIsModalOpen={setIsModalOpen}
+              timeseriesData={timeseriesData} 
+              setTimeseriesData={setTimeseriesData} 
               imageOverlay={imageOverlay}
               setImageOverlay={setImageOverlay}
+              interfaceMode={interfaceMode}
             />}
           />
-          <Route path="/data" element={<DataPage searchResults={searchResults} />} />
-          <Route path="/dashboard" element={<DashboardPage searchResults={searchResults} />} />
+          <Route element={<ContentWrapper />}>
+            {/* Rota /data REMOVIDA AQUI */}
+            <Route path="/dashboard" element={
+                <DashboardPage
+                    timeseriesData={timeseriesData} 
+                    selectedCoords={selectedCoords}
+                    searchResults={searchResults} 
+                />}
+            />
+          </Route>
         </Routes>
-      </main>
 
-      {selectedItemDetails && (
-         <div id="map-info-box">
-           {selectedItemDetails.assets.thumbnail?.href && <img src={selectedItemDetails.assets.thumbnail.href} alt="Pré-visualização" />}
-           <h4>{selectedItemDetails.collection}</h4>
-           <p><strong>ID:</strong> {selectedItemDetails.id}</p>
-           <button onClick={closeInfoBox} style={{marginTop: '10px', width: '100%'}}>Fechar</button>
-       </div>
-      )}
+      {/* 5. Renderiza o modal com as props de controle */}
+      <WelcomeModal 
+        isOpen={isHelpModalOpen} 
+        onClose={handleModalClose} 
+      />
 
-      {/* Modal Arrastável para o gráfico WTSS */}
-      {isModalOpen && (
-        <div className="modal-overlay"> {/* Overlay não é arrastável */}
-          <Draggable nodeRef={nodeRef} handle=".modal-drag-handle">
-            <div ref={nodeRef} className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-drag-handle">
-                <span>Gráfico de Série Temporal</span>
-                <button className="modal-close-button" onClick={() => setIsModalOpen(false)}>
-                  &times;
-                </button>
-              </div>
-              <div className="modal-chart-content">
-                <TimeseriesChart timeseriesData={timeseriesData} />
-              </div>
-            </div>
-          </Draggable>
-        </div>
-      )}
     </div>
   );
 }
+
+// Componente Wrapper para adicionar a classe page-content
+const ContentWrapper = () => (
+    <main className="page-content">
+      <Outlet />
+    </main>
+);
 
 export default App;
